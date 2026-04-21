@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Galactic Navigation Matrix</title>
+    <title>Galactic Navigation Matrix - Multi-Vehicle Routes</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -21,13 +21,20 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            background: rgba(0, 10, 20, 0.92);
+            background: rgba(0, 10, 20, 0.95);
             padding: 18px 16px;
             border: 1px solid #00f2ff;
             z-index: 100;
             box-shadow: 0 0 20px rgba(0, 242, 255, 0.15);
-            min-width: 185px;
+            width: 220px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #00f2ff #001;
         }
+        #ui-container::-webkit-scrollbar { width: 4px; }
+        #ui-container::-webkit-scrollbar-thumb { background: #00f2ff44; }
+
         .input-group { margin-bottom: 11px; }
         label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px; color: #556; }
         input {
@@ -35,9 +42,10 @@
             border: 1px solid #00f2ff;
             color: #00f2ff;
             padding: 5px 7px;
-            width: 155px;
+            width: 100%;
             font-size: 12px;
         }
+        input:focus { outline: none; border-color: #fff; }
         button {
             background: #00f2ff;
             color: #000;
@@ -53,10 +61,97 @@
             transition: background 0.15s;
         }
         button:hover { background: #fff; }
-        .btn-danger { background: #b5212a; color: #fff; margin-top: 12px; }
-        .btn-danger:hover { background: #e02535; }
-        .separator { border-top: 1px solid #111; margin: 13px 0; }
-        .future-note { color: #223; font-size: 9px; font-style: italic; line-height: 1.5; }
+        .btn-danger { background: #ff4d5a; color: #fff; margin-top: 6px; border: 1px solid #ff4d5a; }
+        .btn-danger:hover { background: #ff1a2b; }
+        .btn-route { margin-top: 8px; border: 2px solid; transition: all 0.15s; }
+        .separator { border-top: 1px solid #112; margin: 13px 0; }
+        .future-note { color: #445; font-size: 9px; font-style: italic; line-height: 1.5; }
+
+        /* Route section */
+        #routes-section { margin-top: 4px; }
+        .section-title {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #00f2ff;
+            margin-bottom: 10px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #003344;
+        }
+        .vehicle-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 7px;
+        }
+        .vehicle-color-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 0 6px currentColor;
+        }
+        .vehicle-label {
+            font-size: 9px;
+            color: #556;
+            flex-shrink: 0;
+            width: 20px;
+        }
+        .vehicle-input {
+            flex: 1;
+            background: #000;
+            border: 1px solid #223;
+            color: #eee;
+            padding: 4px 6px;
+            font-size: 10px;
+            font-family: monospace;
+            transition: border-color 0.15s;
+        }
+        .vehicle-input:focus { outline: none; }
+        .vehicle-input.valid { border-color: #00ff88; color: #00ff88; }
+        .vehicle-input.invalid { border-color: #ff4d5a; color: #ff4d5a; }
+
+        /* Legend overlay */
+        #legend-overlay {
+            position: absolute;
+            bottom: calc(30vh + 10px);
+            right: 16px;
+            background: rgba(0,10,20,0.9);
+            border: 1px solid #003344;
+            padding: 10px 14px;
+            z-index: 100;
+            font-size: 10px;
+            display: none;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+        .legend-line {
+            width: 28px;
+            height: 2px;
+            border-radius: 1px;
+        }
+        .legend-info { font-size: 9px; color: #aaa; }
+
+        /* Error toast */
+        #toast {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #ff4d5a;
+            color: #fff;
+            padding: 8px 18px;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            z-index: 200;
+            display: none;
+            border-radius: 2px;
+        }
 
         #canvas-container { width: 100vw; height: 70vh; display: block; }
 
@@ -67,27 +162,42 @@
             border: 1px solid #004444;
             padding: 18px;
             overflow-x: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        #matrix-title {
-            margin: 0 0 14px 0;
-            font-size: 11px;
-            letter-spacing: 3px;
-            color: #00f2ff;
-            text-transform: uppercase;
-        }
-        table { border-collapse: collapse; font-size: 10px; color: #00f2ff; }
+        #matrix-title { margin: 0 0 14px 0; font-size: 11px; letter-spacing: 3px; color: #00f2ff; text-transform: uppercase; text-align: center; }
+        #matrix-output { display: flex; justify-content: center; width: 100%; overflow-x: auto; }
+        table { border-collapse: collapse; font-size: 10px; color: #00f2ff; margin: 0 auto; }
         th, td { border: 1px solid #002222; padding: 4px 7px; text-align: center; white-space: nowrap; }
         th { background: rgba(0,242,255,0.04); color: #556; font-size: 9px; letter-spacing: 1px; }
-        .col-id    { font-weight: bold; color: #00f2ff; }
-        .col-name  { color: #334; font-size: 9px; }
+        .col-id { font-weight: bold; color: #00f2ff; }
+        .col-name { color: #445; font-size: 9px; }
         .start-row { color: #ff4d5a !important; font-weight: bold; }
         .cell-self { color: #111; }
-        .cell-w    { color: #00f2ff; }
+        /* Life cost gradient: 0=safe, 1-5 increasing danger */
+        .cost-0 { color: #00f2ff; }
+        .cost-1 { color: #ffe066; font-weight: bold; }
+        .cost-2 { color: #ffaa22; font-weight: bold; }
+        .cost-3 { color: #ff7700; font-weight: bold; }
+        .cost-4 { color: #ff3300; font-weight: bold; }
+        .cost-5 { color: #ff0055; font-weight: bold; text-shadow: 0 0 6px #ff0055; }
+        /* Life cost legend strip */
+        #cost-legend {
+            display: flex; gap: 14px; margin-bottom: 12px; align-items: center;
+            font-size: 9px; letter-spacing: 1px;
+        }
+        .cost-badge {
+            display: flex; align-items: center; gap: 4px;
+        }
     </style>
 </head>
 <body>
 
+<div id="toast"></div>
+
 <div id="ui-container">
+    <!-- GRAPH GENERATION -->
     <div class="input-group">
         <label>Nœuds (systèmes)</label>
         <input type="number" id="nodeCount" value="12" min="2">
@@ -96,30 +206,66 @@
         <label>Secteur Seed</label>
         <input type="text" id="seedInput" value="KASHYYYK-9">
     </div>
-    <button onclick="generate()">⟳ Générer</button>
-    <button class="btn-danger" onclick="copyNumpy()">⬡ Copier NumPy</button>
+    <div class="input-group">
+        <label>Difficulté (%) — coût vies 0→5</label>
+        <input type="number" id="dangerProb" value="40" min="0" max="100">
+    </div>
+    <button onclick="generate()">⟳ Générer Secteur</button>
+         <button id="toggle-hazards" onclick="toggleHazards()" style="background:#440000; color:#ff4d5a; border:1px solid #ff4d5a; margin-top:4px;">
+         Masquer Dangers
+    </button>
+    <button class="btn-danger" onclick="copyNumpy()">⬡ Copier Matrices NumPy</button>
+
+    <div class="separator"></div>
+
+    <!-- VEHICLE ROUTES -->
+    <div id="routes-section">
+        <div class="section-title">▶ Trajets Véhicules</div>
+        <div class="input-group">
+            <label>Nombre de véhicules (k)</label>
+            <input type="number" id="kInput" value="2" min="1" max="8" onchange="buildRouteInputs()">
+        </div>
+        <div id="route-inputs-container"></div>
+        <button id="trace-btn" class="btn-route" onclick="traceRoutes()" style="background:#001a00; color:#00ff88; border-color:#00ff88;">
+            ▶ Tracer les Trajets
+        </button>
+        <button onclick="clearRoutes()" style="background:#00000000; color:#445; border:1px solid #223; margin-top:4px; font-size:9px;">
+            ✕ Effacer Trajets
+        </button>
+    </div>
 
     <div class="separator"></div>
     <div class="future-note">
-        // future: k_vehicles<br>
-        // future: start_node<br>
-        // future: dangerous_edges<br>
-        // future: lives = 3
+        // lives_pool = 3<br>
+        // edge_cost ∈ {0,1,2,3,4,5}<br>
+        // mission: k-TSP min-max
     </div>
 </div>
+
+<!-- Route legend -->
+<div id="legend-overlay"></div>
 
 <div id="canvas-container"></div>
 
 <div id="matrix-container">
-    <h3 id="matrix-title">[ Navigation Data Matrix ]</h3>
+    <h3 id="matrix-title">[ Navigation &amp; Hazard Data Matrix ]</h3>
+    <div id="cost-legend">
+        <span style="color:#445;text-transform:uppercase;letter-spacing:2px">Coût vies :</span>
+        <span class="cost-badge"><span class="cost-0">■</span> <span style="color:#445">0 sûr</span></span>
+        <span class="cost-badge"><span class="cost-1">■</span> <span style="color:#445">1 ☠</span></span>
+        <span class="cost-badge"><span class="cost-2">■</span> <span style="color:#445">2 ☠☠</span></span>
+        <span class="cost-badge"><span class="cost-3">■</span> <span style="color:#445">3 ☠☠☠</span></span>
+        <span class="cost-badge"><span class="cost-4">■</span> <span style="color:#445">4 ☠☠☠☠</span></span>
+        <span class="cost-badge"><span class="cost-5">■</span> <span style="color:#445">5 ☠☠☠☠☠</span></span>
+    </div>
     <div id="matrix-output"></div>
 </div>
 
 <script type="importmap">
 {
     "imports": {
-        "three":          "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/":  "https://unpkg.com/three@0.160.0/examples/jsm/"
+        "three":         "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
     }
 }
 </script>
@@ -128,24 +274,27 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-/*
- * ─── GRAPH STATE ────────────────────────────────────────────────────────────
- * Extensible structure for the future NP-hard min-max k-TSP variant:
- *   • kVehicles vehicles start at startNode, each vertex visited exactly once
- *   • Objective: minimise the longest individual tour
- *   • dangerousEdges: edges that consume lives when traversed
- *   • lives: shared pool of 3 lives across all vehicles
- */
+// ─── Vehicle Colors ────────────────────────────────────────────────────────────
+const VEHICLE_COLORS = [
+    { hex: '#00ff88', three: 0x00ff88, name: 'Vert Émeraude' },
+    { hex: '#cc44ff', three: 0xcc44ff, name: 'Violet Plasma' },
+    { hex: '#00ccff', three: 0x00ccff, name: 'Bleu Hyper' },
+    { hex: '#ff44aa', three: 0xff44aa, name: 'Rose Nebula' },
+    { hex: '#ff4d5a', three: 0xff4d5a, name: 'Rouge Danger' },
+    { hex: '#88ff44', three: 0x88ff44, name: 'Lime Pulsar' },
+];
+
 const graphState = {
-    nodes:          [],   // [{id:int, name:str, pos:THREE.Vector3}]
-    matrix:         [],   // n×n integer weight adjacency matrix (complete graph)
-    startNode:      0,    // [PARAM]  predefined departure node
-    kVehicles:      1,    // [FUTURE] number of vehicles
-    dangerousEdges: [],   // [FUTURE] [{i, j, liveCost}]
-    lives:          3,    // [FUTURE] total lives
+    nodes:        [],
+    distMatrix:   [],
+    dangerMatrix: [],
+    startNode:    0,
+    lives:        3,
 };
 
-// ─── SEEDED RNG ───────────────────────────────────────────────────────────────
+let routeGroup = null;
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
 function mulberry32(seed) {
     return () => {
         seed += 0x6D2B79F5;
@@ -160,19 +309,10 @@ function hashStr(s) {
     return h;
 }
 
-// ─── PLANET NAME GENERATOR ────────────────────────────────────────────────────
-// 32 × 22 × 28 = 19 712 unique deterministic names
 const NP = {
-    pre: ['Tat','Cor','Hot','End','Nab','Dag','Bes','Ald','Kam','Mus',
-          'Geo','Uta','Kas','Myg','Fel','Sal','Dan','Kij','Kor','Yav',
-          'Jak','Tak','Ahch','Cra','Exe','Nev','Sor','Lot','Mal','Nar',
-          'Ryl','Sul'],
-    mid: ['a','oo','ui','ao','ei','ia','ou','ee','an','or',
-          'al','en','in','ar','el','un','ir','ux','om','ez',
-          'yr','ith'],
-    suf: ['ine','ant','or','oon','bah','pin','aan','ino','far','sis',
-          'pau','yk','eto','cia','ami','tou','ku','gol','dor','al',
-          'mir','von','ath','esk','onx','deen','aris','ovar']
+    pre: ['Tat','Cor','Hot','End','Nab','Dag','Bes','Ald','Kam','Mus','Geo','Uta','Kas','Myg','Fel','Sal','Dan','Kij','Kor','Yav','Jak','Tak','Ahch','Cra','Exe','Nev','Sor','Lot','Mal','Nar','Ryl','Sul'],
+    mid: ['a','oo','ui','ao','ei','ia','ou','ee','an','or','al','en','in','ar','el','un','ir','ux','om','ez','yr','ith'],
+    suf: ['ine','ant','or','oon','bah','pin','aan','ino','far','sis','pau','yk','eto','cia','ami','tou','ku','gol','dor','al','mir','von','ath','esk','onx','deen','aris','ovar']
 };
 function planetName(i) {
     const P = NP.pre.length, I = NP.mid.length, S = NP.suf.length;
@@ -185,7 +325,7 @@ let scene, camera, renderer, controls, graphGroup, nebulaGroup;
 function init() {
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / (window.innerHeight * 0.7), 0.1, 1000);
-    camera.position.set(50, 38, 50);
+    camera.position.set(50, 40, 50);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight * 0.7);
@@ -194,246 +334,385 @@ function init() {
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-
-    nebulaGroup = buildNebula();
-    scene.add(nebulaGroup);
 
     graphGroup = new THREE.Group();
     scene.add(graphGroup);
+    routeGroup = new THREE.Group();
+    scene.add(routeGroup);
 
     animate();
     generate();
+    buildRouteInputs();
 }
 
-// ─── NEBULA ───────────────────────────────────────────────────────────────────
-// Flat disk effect: multiple PlaneGeometry layers laid in XZ plane,
-// each with a canvas-gradient texture and AdditiveBlending.
-// The slight tilt offsets between layers fake 3-D depth.
-function buildNebula() {
-    const g = new THREE.Group();
-
-    function gradTex(fn) {
-        const s = 512, cv = document.createElement('canvas');
-        cv.width = cv.height = s;
-        const ctx = cv.getContext('2d');
-        ctx.clearRect(0, 0, s, s);
-        fn(ctx, s);
-        return new THREE.CanvasTexture(cv);
-    }
-
-    // 1. Bright stellar core
-    const tCore = gradTex((ctx, s) => {
-        const g = ctx.createRadialGradient(s/2,s/2,0, s/2,s/2,s/2);
-        g.addColorStop(0,    'rgba(215,238,255,1.0)');
-        g.addColorStop(0.05, 'rgba(140,195,255,0.88)');
-        g.addColorStop(0.13, 'rgba(75,138,245,0.55)');
-        g.addColorStop(0.30, 'rgba(45,75,185,0.18)');
-        g.addColorStop(0.60, 'rgba(20,35,105,0.05)');
-        g.addColorStop(1,    'rgba(0,0,0,0)');
-        ctx.fillStyle = g; ctx.fillRect(0,0,s,s);
-    });
-
-    // 2. Wide nebula disk with faint spiral arms
-    const tDisk = gradTex((ctx, s) => {
-        const g = ctx.createRadialGradient(s/2,s/2,0, s/2,s/2,s/2);
-        g.addColorStop(0,    'rgba(85,150,255,0.38)');
-        g.addColorStop(0.18, 'rgba(60,100,215,0.20)');
-        g.addColorStop(0.45, 'rgba(70,40,175,0.10)');
-        g.addColorStop(0.72, 'rgba(35,12,85,0.04)');
-        g.addColorStop(1,    'rgba(0,0,0,0)');
-        ctx.fillStyle = g; ctx.fillRect(0,0,s,s);
-        // Three faint arms
-        for (let k = 0; k < 3; k++) {
-            ctx.save();
-            ctx.translate(s/2, s/2);
-            ctx.rotate(k * Math.PI * 2 / 3 + 0.5);
-            ctx.scale(0.20, 1);
-            const ag = ctx.createRadialGradient(0,0,0, 0,0,s*0.47);
-            ag.addColorStop(0,   'rgba(115,175,255,0.15)');
-            ag.addColorStop(0.55,'rgba(65,95,205,0.06)');
-            ag.addColorStop(1,   'rgba(0,0,0,0)');
-            ctx.fillStyle = ag;
-            ctx.beginPath(); ctx.arc(0,0,s*0.47,0,Math.PI*2); ctx.fill();
-            ctx.restore();
-        }
-    });
-
-    // 3. Warm outer haze (purple/crimson rim)
-    const tHaze = gradTex((ctx, s) => {
-        const g = ctx.createRadialGradient(s/2,s/2,s*0.08, s/2,s/2,s/2);
-        g.addColorStop(0,   'rgba(140,55,210,0.06)');
-        g.addColorStop(0.40,'rgba(100,30,165,0.09)');
-        g.addColorStop(0.68,'rgba(175,55,80,0.06)');
-        g.addColorStop(0.88,'rgba(80,20,40,0.03)');
-        g.addColorStop(1,   'rgba(0,0,0,0)');
-        ctx.fillStyle = g; ctx.fillRect(0,0,s,s);
-    });
-
-    // Helper: lay a PlaneGeometry flat (XZ plane) then apply slight tilt
-    // sx/sz = scale in world X and Z; tiltX = extra x-axis tilt; rotY = y-rotation
-    function addLayer(tex, sx, sz, tiltX, rotY, opacity) {
-        const mat = new THREE.MeshBasicMaterial({
-            map: tex,
-            transparent: true,
-            opacity,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        });
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-        // -PI/2 lays the plane flat; tiltX adds the organic warp
-        mesh.rotation.set(-Math.PI / 2 + tiltX, rotY, 0);
-        mesh.scale.set(sx, sz, 1);
-        g.add(mesh);
-    }
-
-    // Stacked layers — together they form a convincing flattened nebula
-    //                     sx    sz   tiltX  rotY  opacity
-    addLayer(tCore,         38,   38,  0.00,  0.00, 0.95);  // core glow
-    addLayer(tDisk,        130,   88,  0.00,  0.00, 0.82);  // main disk
-    addLayer(tDisk,        115,  105,  0.07,  0.90, 0.58);  // slight tilt A
-    addLayer(tDisk,        148,   68,  0.10,  2.10, 0.46);  // slight tilt B
-    addLayer(tDisk,         95,  125, -0.06,  1.45, 0.42);  // slight tilt C
-    addLayer(tHaze,        175,  115,  0.00,  0.00, 0.52);  // outer warm haze
-    addLayer(tHaze,        160,  135,  0.05,  1.10, 0.36);  // tilted haze
-
-    return g;
-}
-
-// ─── TEXT SPRITE ──────────────────────────────────────────────────────────────
 function makeLabel(text, color) {
     const cv = document.createElement('canvas');
     cv.width = 64; cv.height = 32;
     const ctx = cv.getContext('2d');
-    ctx.fillStyle = color;
-    ctx.font = 'bold 17px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, 32, 16);
-    const mat = new THREE.SpriteMaterial({
-        map: new THREE.CanvasTexture(cv),
-        transparent: true,
-        depthWrite: false,
-    });
-    const s = new THREE.Sprite(mat);
-    s.scale.set(2.4, 1.2, 1);
+    ctx.fillStyle = color; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+    ctx.fillText(text, 32, 22);
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true }));
+    s.scale.set(3, 1.5, 1);
     return s;
 }
+
+let hazardsVisible = true;
+
+window.toggleHazards = function() {
+    hazardsVisible = !hazardsVisible;
+    
+    // On parcourt tous les traits du graphe
+    graphGroup.children.forEach(child => {
+        if (child.userData.isHazard) {
+            child.visible = hazardsVisible;
+        }
+    });
+
+    // Optionnel : change le texte du bouton
+    const btn = document.getElementById('toggle-hazards');
+    btn.textContent = hazardsVisible ? "👁 Masquer Dangers" : "👁 Afficher Dangers";
+};
 
 // ─── GRAPH GENERATION ─────────────────────────────────────────────────────────
 function generate() {
     while (graphGroup.children.length > 0) graphGroup.remove(graphGroup.children[0]);
+    clearRoutes();
 
-    const n   = Math.max(2, parseInt(document.getElementById('nodeCount').value) || 12);
+    const n = Math.max(2, parseInt(document.getElementById('nodeCount').value) || 12);
+    const diff = Math.max(0, Math.min(100, parseInt(document.getElementById('dangerProb').value) || 40));
     const rng = mulberry32(hashStr(document.getElementById('seedInput').value));
 
-    const nodes  = [];
-    const INNER  = 20, WIDTH = 28;
-
+    const nodes = [];
     for (let i = 0; i < n; i++) {
-        const r     = INNER + rng() * WIDTH;
-        const theta = rng() * Math.PI * 2;
-        const y     = (rng() - 0.5) * 12;
-        const pos   = new THREE.Vector3(r * Math.cos(theta), y, r * Math.sin(theta));
+        const r = 20 + rng() * 25, theta = rng() * Math.PI * 2, y = (rng() - 0.5) * 10;
+        const pos = new THREE.Vector3(r * Math.cos(theta), y, r * Math.sin(theta));
         nodes.push({ id: i, name: planetName(i), pos });
 
         const isStart = (i === graphState.startNode);
-        const sphere  = new THREE.Mesh(
-            new THREE.SphereGeometry(0.8, 8, 8),
+        const sphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.7, 6, 6),
             new THREE.MeshBasicMaterial({ color: isStart ? 0xff4d5a : 0x00f2ff, wireframe: true })
         );
         sphere.position.copy(pos);
         graphGroup.add(sphere);
-
         const label = makeLabel(String(i), isStart ? '#ff4d5a' : '#00f2ff');
-        label.position.copy(pos).add(new THREE.Vector3(0, 2.3, 0));
+        label.position.copy(pos).y += 2;
         graphGroup.add(label);
     }
 
-    // Complete graph: one shared edge material, integer weights
-    const matrix  = Array.from({ length: n }, () => Array(n).fill(0));
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x00f2ff, transparent: true, opacity: 0.06 });
+    const distMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+    const dangerMatrix = Array.from({ length: n }, () => Array(n).fill(0));
+
+    // Edge colors by life cost: 0=dim cyan, 1=yellow, 2=orange, 3=dark-orange, 4=red, 5=hot-red
+    const costColors = [0x003344, 0xffe066, 0xffaa22, 0xff7700, 0xff3300, 0xff0055];
+    const costOpacity = [0.07, 0.45, 0.5, 0.55, 0.6, 0.75];
 
     for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
-            graphGroup.add(new THREE.Line(
+            // ... à l'intérieur de la boucle for (let j = i + 1; j < n; j++) ...
+
+            const dist = Math.max(1, Math.round(nodes[i].pos.distanceTo(nodes[j].pos)));
+            const p = diff / 100; // 0.01 à 1.0
+
+// 1. Probabilité qu'il y ait un danger (au moins 1)
+// On ajoute un "floor" (ex: 0.05) pour garantir qu'à 1% de diff, 
+// il y a quand même 5% de chance d'avoir un danger.
+            const probDanger = Math.max(0.05, p); 
+
+            let cost = 0;
+            if (rng() < probDanger) {
+    // 2. Si c'est dangereux, on détermine la sévérité.
+    // Plus 'p' est grand, plus on favorise les coûts élevés (3, 4, 5)
+    // Plus 'p' est petit, plus on reste sur du léger (1, 2)
+                const severityFactor = rng(); 
+    
+    // On utilise p pour biaiser la répartition vers le haut
+                if (severityFactor > (1 - p * 0.5)) {
+                    cost = 5; // Très rare si p est bas
+                } else if (severityFactor > (1 - p)) {
+                    cost = 4;
+                } else if (severityFactor > 0.6) {
+                    cost = 3;
+                } else if (severityFactor > 0.3) {
+                    cost = 2;
+                } else {
+                    cost = 1;
+                }
+            } else {
+                cost = 0; // Sûr
+            }
+
+            distMatrix[i][j] = distMatrix[j][i] = dist;
+            dangerMatrix[i][j] = dangerMatrix[j][i] = cost;
+// ... le reste 
+
+            const edgeMat = new THREE.LineBasicMaterial({ color: costColors[cost], transparent: true, opacity: cost === 0 ? 0.07 : 0.2 + (cost * 0.15) });
+            const line = new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints([nodes[i].pos, nodes[j].pos]),
                 edgeMat
-            ));
-            const w          = Math.max(1, Math.round(nodes[i].pos.distanceTo(nodes[j].pos)));
-            matrix[i][j]     = w;
-            matrix[j][i]     = w;
+            );
+            if (cost > 0) line.userData.isHazard = true;
+            graphGroup.add(line);
         }
     }
 
-    graphState.nodes  = nodes;
-    graphState.matrix = matrix;
-
-    renderMatrix();
+    graphState.nodes = nodes;
+    graphState.distMatrix = distMatrix;
+    graphState.dangerMatrix = dangerMatrix;
+    renderTable();
 }
 
-// ─── MATRIX RENDER ────────────────────────────────────────────────────────────
-function renderMatrix() {
-    const { nodes, matrix, startNode } = graphState;
-    const n = nodes.length;
+// ─── ROUTE INPUT UI ──────────────────────────────────────────────────────────
+window.buildRouteInputs = function() {
+    const k = Math.max(1, Math.min(8, parseInt(document.getElementById('kInput').value) || 2));
+    const container = document.getElementById('route-inputs-container');
+    container.innerHTML = '';
 
-    let html = `<table><thead><tr>
-        <th>#</th>
-        <th>Planète</th>`;
+    for (let v = 0; v < k; v++) {
+        const col = VEHICLE_COLORS[v];
+        const row = document.createElement('div');
+        row.className = 'vehicle-row';
+
+        const dot = document.createElement('div');
+        dot.className = 'vehicle-color-dot';
+        dot.style.background = col.hex;
+        dot.style.color = col.hex;
+
+        const lbl = document.createElement('span');
+        lbl.className = 'vehicle-label';
+        lbl.style.color = col.hex;
+        lbl.textContent = `V${v+1}`;
+
+        const inp = document.createElement('input');
+        inp.className = 'vehicle-input';
+        inp.id = `route-v${v}`;
+        inp.placeholder = `[0, 1, 4, 0]`;
+        inp.style.borderColor = col.hex + '55';
+        inp.addEventListener('input', () => validateRouteInput(inp, v));
+        inp.addEventListener('focus', () => inp.style.borderColor = col.hex);
+        inp.addEventListener('blur', () => {
+            validateRouteInput(inp, v);
+            if (!inp.value) inp.style.borderColor = col.hex + '55';
+        });
+
+        row.appendChild(dot);
+        row.appendChild(lbl);
+        row.appendChild(inp);
+        container.appendChild(row);
+    }
+};
+
+function validateRouteInput(inp, v) {
+    const val = inp.value.trim();
+    if (!val) { inp.className = 'vehicle-input'; return null; }
+    const parsed = parseRoute(val);
+    if (parsed === null) {
+        inp.className = 'vehicle-input invalid';
+    } else {
+        inp.className = 'vehicle-input valid';
+    }
+    return parsed;
+}
+
+function parseRoute(str) {
+    // Accept: [0, 1, 4, 0] or 0,1,4,0 or 0 1 4 0
+    const cleaned = str.replace(/[\[\]()]/g, '').trim();
+    const parts = cleaned.split(/[\s,]+/).filter(Boolean);
+    if (parts.length < 2) return null;
+    const nums = parts.map(p => parseInt(p));
+    if (nums.some(isNaN)) return null;
+    const n = graphState.nodes.length;
+    if (nums.some(x => x < 0 || x >= n)) return null;
+    return nums;
+}
+
+// ─── ROUTE TRACING ───────────────────────────────────────────────────────────
+window.traceRoutes = function() {
+    // Clear previous routes
+    while (routeGroup.children.length > 0) routeGroup.remove(routeGroup.children[0]);
+
+    const k = Math.max(1, Math.min(8, parseInt(document.getElementById('kInput').value) || 2));
+    const routes = [];
+    let hasAny = false;
+
+    for (let v = 0; v < k; v++) {
+        const inp = document.getElementById(`route-v${v}`);
+        if (!inp || !inp.value.trim()) continue;
+        const parsed = parseRoute(inp.value);
+        if (parsed === null) {
+            showToast(`Erreur V${v+1}: route invalide`);
+            return;
+        }
+        routes.push({ vehicle: v, path: parsed });
+        hasAny = true;
+    }
+
+    if (!hasAny) { showToast('Aucune route saisie'); return; }
+
+    // Compute stats per route
+    const stats = [];
+
+    routes.forEach(({ vehicle, path }) => {
+        const col = VEHICLE_COLORS[vehicle];
+        const nodes = graphState.nodes;
+
+        let totalDist = 0, totalDanger = 0;
+
+        for (let seg = 0; seg < path.length - 1; seg++) {
+            const a = path[seg], b = path[seg + 1];
+            totalDist += graphState.distMatrix[a][b];
+            const edgeCost = graphState.dangerMatrix[a][b]; // now 0-5
+            totalDanger += edgeCost;
+
+            const pA = nodes[a].pos, pB = nodes[b].pos;
+
+            // Offset each vehicle slightly so overlapping routes are visible
+            const offset = new THREE.Vector3(
+                (vehicle - k/2 + 0.5) * 0.3,
+                (vehicle - k/2 + 0.5) * 0.3,
+                0
+            );
+
+            // Draw route tube (thicker)
+            const pts = [pA.clone().add(offset), pB.clone().add(offset)];
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            const mat = new THREE.LineBasicMaterial({
+                color: col.three,
+                transparent: true,
+                opacity: 0.85,
+                linewidth: 3,
+                depthTest: false
+            });
+            const line = new THREE.Line(geo, mat);
+            line.renderOrder = 10;
+            routeGroup.add(line);
+
+            // Direction arrow sphere at midpoint
+            const mid = pA.clone().add(pB).multiplyScalar(0.5).add(offset);
+            const arrowSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.25, 6, 6),
+                new THREE.MeshBasicMaterial({ color: col.three })
+            );
+            arrowSphere.position.copy(mid);
+            routeGroup.add(arrowSphere);
+        }
+
+        // Highlight waypoint nodes with colored rings
+        path.forEach((nodeId, idx) => {
+            const pos = nodes[nodeId].pos;
+            const isFirst = idx === 0, isLast = idx === path.length - 1;
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(1.2 + vehicle * 0.25, 0.12, 6, 20),
+                new THREE.MeshBasicMaterial({ color: col.three, transparent: true, opacity: isFirst || isLast ? 1 : 0.6 })
+            );
+            ring.position.copy(pos);
+            ring.rotation.x = Math.PI / 2;
+            routeGroup.add(ring);
+        });
+
+        stats.push({ vehicle, path, totalDist, totalDanger, col });
+    });
+
+    // Update legend
+    buildLegend(stats);
+};
+
+function buildLegend(stats) {
+    const legend = document.getElementById('legend-overlay');
+    if (!stats.length) { legend.style.display = 'none'; return; }
+
+    let html = `<div style="font-size:9px;letter-spacing:2px;color:#556;margin-bottom:8px;text-transform:uppercase">Trajets actifs</div>`;
+    stats.forEach(({ vehicle, path, totalDist, totalDanger, col }) => {
+        html += `
+        <div class="legend-item">
+            <div class="legend-line" style="background:${col.hex};box-shadow:0 0 6px ${col.hex}"></div>
+            <div>
+                <span style="color:${col.hex};font-weight:bold">V${vehicle+1}</span>
+                <span class="legend-info"> · ${path.length} nœuds · dist ${totalDist}</span>
+                ${totalDanger > 0 ? `<span style="color:#ff4d5a;font-size:9px"> · ☠ ${totalDanger} vie${totalDanger>1?'s':''} perdues</span>` : `<span style="color:#00ff88;font-size:9px"> · ✓ sûr</span>`}
+            </div>
+        </div>
+        <div style="font-size:8px;color:#334;margin:-2px 0 5px 36px;font-family:monospace">[${path.join('→')}]</div>`;
+    });
+    legend.innerHTML = html;
+    legend.style.display = 'block';
+}
+
+window.clearRoutes = function() {
+    if (routeGroup) {
+        while (routeGroup.children.length > 0) routeGroup.remove(routeGroup.children[0]);
+    }
+    document.getElementById('legend-overlay').style.display = 'none';
+};
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 2500);
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+function renderTable() {
+    const { nodes, distMatrix, dangerMatrix, startNode } = graphState;
+    const n = nodes.length;
+    let html = `<table><thead><tr><th>#</th><th>Planète</th>`;
     for (let j = 0; j < n; j++) html += `<th>${j}</th>`;
     html += '</tr></thead><tbody>';
-
-    matrix.forEach((row, i) => {
+    distMatrix.forEach((row, i) => {
         const s = (i === startNode);
-        html += `<tr>
-            <td class="${s ? 'start-row' : 'col-id'}">${i}</td>
-            <td class="${s ? 'start-row' : 'col-name'}">${nodes[i].name}</td>`;
+        html += `<tr><td class="${s ? 'start-row' : 'col-id'}">${i}</td><td class="${s ? 'start-row' : 'col-name'}">${nodes[i].name}</td>`;
         row.forEach((w, j) => {
-            html += `<td class="${i === j ? 'cell-self' : 'cell-w'}">${i === j ? '—' : w}</td>`;
+            const cost = dangerMatrix[i][j];
+            if (i === j) {
+                html += `<td class="cell-self">—</td>`;
+            } else {
+                html += `<td class="cost-${cost}" title="${cost > 0 ? cost + ' vie(s) perdue(s)' : 'Sûr'}">${w}<sup style="font-size:7px;opacity:0.7">${cost > 0 ? '☠'.repeat(cost) : ''}</sup></td>`;
+            }
         });
         html += '</tr>';
     });
-
     document.getElementById('matrix-output').innerHTML = html + '</tbody></table>';
 }
 
 // ─── NUMPY EXPORT ─────────────────────────────────────────────────────────────
-// Format matches np.array([[...]]) for direct paste into Python.
-// Comments carry the metadata needed for the future NP-hard solver.
-function copyNumpy() {
-    const { matrix, startNode, kVehicles, lives } = graphState;
+window.copyNumpy = function() {
+    const { distMatrix, dangerMatrix, startNode } = graphState;
     const seed = document.getElementById('seedInput').value;
-    let s  = `# n=${matrix.length}  start=${startNode}  k_vehicles=${kVehicles}  lives=${lives}  seed="${seed}"\n`;
-    s     += `# dangerous_edges=[]  (to be populated)\n`;
-    s     += `np.array([\n`;
-    matrix.forEach((row, i) => {
-        s += `    [${row.join(', ')}]${i < matrix.length - 1 ? ',' : ''}\n`;
-    });
+    let s = `import numpy as np\n\n# seed="${seed}", start_node=${startNode}, lives_pool=3\n`;
+    s += `dist_matrix = np.array([\n`;
+    distMatrix.forEach((row, i) => { s += `    [${row.join(', ')}]${i < distMatrix.length-1 ? ',' : ''}\n`; });
+    s += `])\n\n# Life cost per edge: 0=safe, 1-5=lives lost (difficulty-weighted)\nlife_costs = np.array([\n`;
+    dangerMatrix.forEach((row, i) => { s += `    [${row.join(', ')}]${i < dangerMatrix.length-1 ? ',' : ''}\n`; });
     s += `])`;
-    navigator.clipboard.writeText(s).then(() => alert('Matrice NumPy copiée !'));
-}
+    navigator.clipboard.writeText(s).then(() => alert('Matrices copiées !'));
+};
 
-// ─── ANIMATION LOOP ───────────────────────────────────────────────────────────
+// ─── ANIMATION ───────────────────────────────────────────────────────────────
+let t = 0;
 function animate() {
     requestAnimationFrame(animate);
     controls.update();
-    if (nebulaGroup) nebulaGroup.rotation.y += 0.00008; // imperceptibly slow drift
+    if (nebulaGroup) nebulaGroup.rotation.z += 0.0001;
+    // Pulse route rings
+    t += 0.02;
+    routeGroup.children.forEach(child => {
+        if (child.geometry?.type === 'TorusGeometry') {
+            child.material.opacity = 0.5 + 0.4 * Math.sin(t + child.position.x);
+        }
+    });
     renderer.render(scene, camera);
 }
 
 window.addEventListener('resize', () => {
-    const w = window.innerWidth, h = window.innerHeight * 0.7;
-    camera.aspect = w / h;
+    camera.aspect = window.innerWidth / (window.innerHeight * 0.7);
     camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
+    renderer.setSize(window.innerWidth, window.innerHeight * 0.7);
 });
 
-// Expose to HTML onclick attributes
-window.generate   = generate;
-window.copyNumpy  = copyNumpy;
-
 init();
+window.generate = generate;
 </script>
 </body>
 </html>
